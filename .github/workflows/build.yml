@@ -38,7 +38,7 @@ jobs:
           pyinstaller --onefile PrefixHQ.py --name PrefixHQ
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: PrefixHQ-build
           path: dist/PrefixHQ
