@@ -20,6 +20,7 @@
 
 * Linux with Steam installed
 * No need to install Python or dependencies — all required libraries are bundled in the binary
+* - (*Optional*) Internet connection (**upon launch PrefixHQ tries to download the Steam appID from [this source](https://store.steampowered.com/api/appdetails) and save it to the config folder**)
 
 ## Notes
 
