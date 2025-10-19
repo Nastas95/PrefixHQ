@@ -11,26 +11,34 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pyqt5 requests pyinstaller
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
 
       - name: Build executable
         run: |
-          pyinstaller --noconfirm --onefile --windowed PrefixHQ.py
-          
-      - name: Upload artifact
+          pyinstaller --onefile PrefixHQ.py --name PrefixHQ
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
-          name: PrefixHQ
-          path: dist/
+          name: PrefixHQ-build
+          path: dist/PrefixHQ
