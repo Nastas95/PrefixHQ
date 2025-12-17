@@ -71,13 +71,17 @@ def get_game_name(appid):
     return f"(AppID {appid})"
 
 
-# 🔹 QUI È IL WORKAROUND
-def open_directory_via_shell(path: Path) -> bool:
-    shell = os.environ.get("SHELL", "/bin/sh")
-
+# FIX? (GitHub Actions)
+def open_directory_via_dbus(path: Path) -> bool:
     try:
         subprocess.Popen(
-            [shell, "-c", f'xdg-open "{path}"'],
+            [
+                "dbus-launch",
+                "--exit-with-session",
+                "sh",
+                "-c",
+                f'xdg-open "{path}"'
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -132,13 +136,13 @@ class MainWindow(QMainWindow):
         self.btn_quit = QPushButton("Quit")
         self.btn_quit.clicked.connect(self.close)
 
-        for btn in [
+        for btn in (
             self.btn_delete,
             self.btn_open,
             self.btn_refresh,
             self.btn_rename,
             self.btn_quit
-        ]:
+        ):
             buttons_layout.addWidget(btn)
 
         self.layout.addLayout(buttons_layout)
@@ -212,8 +216,9 @@ class MainWindow(QMainWindow):
                 "⚠️⚠️⚠️ WARNING ⚠️⚠️⚠️",
                 (
                     "Some of the selected prefixes are associated with "
-                    "<b><span style='color:red'>non-Steam programs</span></b> and may contain "
-                    "<b>important files</b>. Are you sure you want to delete them?"
+                    "<b><span style='color:red'>non-Steam programs</span></b> "
+                    "and may contain important files.<br><br>"
+                    "<b>This action is irreversible.</b>"
                 ),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
@@ -240,7 +245,7 @@ class MainWindow(QMainWindow):
 
         for row in rows:
             path = COMPATDATA / self.table.item(row, 0).text()
-            if open_directory_via_shell(path):
+            if open_directory_via_dbus(path):
                 self.log(f"📂 Opened directory: {path}", color="yellow")
             else:
                 self.log(f"❌ Failed to open directory: {path}", color="red")
