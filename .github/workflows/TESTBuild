@@ -1,0 +1,44 @@
+name: Build TEST PrefixHQ
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller --onefile PrefixHQTEST.py --name PrefixHQTEST
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrefixHQTEST-build
+          path: dist/PrefixHQTEST
