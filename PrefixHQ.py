@@ -4,7 +4,6 @@ import re
 import json
 import shutil
 import requests
-os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
 import subprocess
 from pathlib import Path
 from PyQt5.QtWidgets import (
@@ -13,23 +12,28 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QMessageBox, QInputDialog
 )
 
+# Set CA bundle path for SSL verification (useful on some Linux distros)
+os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
+
 # Paths
 STEAM_APPS = Path.home() / ".local/share/Steam/steamapps"
 COMPATDATA = STEAM_APPS / "compatdata"
 STEAM_API = "https://store.steampowered.com/api/appdetails"
 
-# Local DB
+# Local database directory and file
 CONFIG_DIR = Path.home() / ".config/PrefixHQ"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 DB_FILE = CONFIG_DIR / "games.json"
 
 def load_local_db():
+    """Load the local game database from disk."""
     if DB_FILE.exists():
         with open(DB_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {"installed_games": {}, "custom_names": {}}
 
 def save_local_db(data):
+    """Save the local game database to disk."""
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
@@ -39,6 +43,7 @@ IGNORE_APPIDS = {
 }
 
 def get_installed_games():
+    """Parse .acf files in Steam apps directory to find installed games."""
     games = {}
     for acf_file in STEAM_APPS.glob("*.acf"):
         try:
@@ -57,6 +62,7 @@ def get_installed_games():
     return games
 
 def get_game_name(appid):
+    """Fetch game name from Steam API if possible."""
     try:
         appid_str = str(int(appid))
         resp = requests.get(STEAM_API, params={"appids": appid_str}, timeout=5)
@@ -67,6 +73,90 @@ def get_game_name(appid):
     except Exception:
         pass
     return f"(AppID {appid})"
+
+
+def get_default_file_manager():
+    """
+    Attempt to detect the user's default file manager by querying
+    the default handler for 'inode/directory' via xdg-mime.
+    Returns the executable name (e.g., 'nautilus', 'dolphin') or None.
+    """
+    try:
+        result = subprocess.run(
+            ["xdg-mime", "query", "default", "inode/directory"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        desktop_file = result.stdout.strip()
+        if not desktop_file:
+            return None
+
+        # Remove .desktop extension
+        if desktop_file.endswith(".desktop"):
+            desktop_file = desktop_file[:-8]
+
+        # Known mappings from desktop file names to actual commands
+        known_mappings = {
+            "org.gnome.Nautilus": "nautilus",
+            "org.kde.dolphin": "dolphin",
+            "nemo": "nemo",
+            "thunar": "thunar",
+            "pcmanfm": "pcmanfm",
+            "spacefm": "spacefm",
+            "caja": "caja",
+            "kfmclient": "kfmclient",
+            "peony": "peony",
+            "dde-file-manager": "dde-file-manager",
+        }
+
+        # Try exact match
+        if desktop_file in known_mappings:
+            return known_mappings[desktop_file]
+
+        # Try case-insensitive match
+        desktop_lower = desktop_file.lower()
+        for key, cmd in known_mappings.items():
+            if key.lower() == desktop_lower:
+                return cmd
+
+        # Fallback: use the basename as-is
+        return desktop_file
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def open_with_file_manager(path):
+    """
+    Open the given directory using the detected default file manager.
+    
+    To avoid library conflicts in PyInstaller-bundled binaries (e.g., OpenSSL version mismatches),
+    this function launches the file manager with a clean environment where LD_LIBRARY_PATH
+    is removed entirely. This ensures system libraries are used instead of bundled ones.
+    
+    Falls back to 'xdg-open' if the detected file manager fails.
+    Returns True on success, False otherwise.
+    """
+    # Start with a copy of the current environment
+    clean_env = os.environ.copy()
+    
+    # Remove LD_LIBRARY_PATH to prevent loading bundled libraries (e.g., outdated libssl.so)
+    clean_env.pop("LD_LIBRARY_PATH", None)
+
+    fm = get_default_file_manager()
+    if fm and shutil.which(fm):
+        try:
+            subprocess.Popen([fm, str(path)], env=clean_env)
+            return True
+        except Exception:
+            pass
+
+    # Fallback to xdg-open with clean environment
+    try:
+        subprocess.Popen(["xdg-open", str(path)], env=clean_env)
+        return True
+    except Exception:
+        return False
 
 
 class MainWindow(QMainWindow):
@@ -201,14 +291,17 @@ class MainWindow(QMainWindow):
                 self.log(f"❌ Error deleting {path}: {e}", color="red")
 
     def open_selected(self):
+        """Open selected prefix directories using the detected file manager."""
         rows = self.get_selected_rows()
         if not rows:
             self.log("No prefixes selected to open.", color="yellow")
             return
         for row in rows:
             path = COMPATDATA / self.table.item(row, 0).text()
-            subprocess.Popen(["xdg-open", str(path)])
-            self.log(f"📂 Opened directory: {path}", color="yellow")
+            if open_with_file_manager(path):
+                self.log(f"📂 Opened directory: {path}", color="yellow")
+            else:
+                self.log(f"❌ Failed to open directory: {path}", color="red")
 
     def rename_game(self):
         rows = self.get_selected_rows()
@@ -226,11 +319,12 @@ class MainWindow(QMainWindow):
             self.log(f"Game {appid} renamed to '{new_name.strip()}'", color="green")
 
     def log(self, message, color=None):
+        """Log a message to the log window with optional color."""
         if color:
             self.log_window.append(f'<span style="color:{color}">{message}</span>')
-            self.log_window.append("")
         else:
             self.log_window.append(message)
+        self.log_window.append("")  # Add blank line for spacing
 
 
 if __name__ == "__main__":
