@@ -120,7 +120,7 @@ def get_default_file_manager():
             if key.lower() == desktop_lower:
                 return cmd
 
-        # Fallback: use the basename as-is (may work if it's already a command)
+        # Fallback: use the basename as-is
         return desktop_file
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
@@ -128,21 +128,32 @@ def get_default_file_manager():
 
 def open_with_file_manager(path):
     """
-    Open the given path using the detected default file manager.
-    Falls back to 'xdg-open' if detection fails or the manager is not found.
-    Returns True if successful, False otherwise.
+    Open the given directory using the detected default file manager.
+    
+    To avoid library conflicts in PyInstaller-bundled binaries (e.g., OpenSSL version mismatches),
+    this function launches the file manager with a clean environment where LD_LIBRARY_PATH
+    is removed entirely. This ensures system libraries are used instead of bundled ones.
+    
+    Falls back to 'xdg-open' if the detected file manager fails.
+    Returns True on success, False otherwise.
     """
+    # Start with a copy of the current environment
+    clean_env = os.environ.copy()
+    
+    # Remove LD_LIBRARY_PATH to prevent loading bundled libraries (e.g., outdated libssl.so)
+    clean_env.pop("LD_LIBRARY_PATH", None)
+
     fm = get_default_file_manager()
     if fm and shutil.which(fm):
         try:
-            subprocess.Popen([fm, str(path)])
+            subprocess.Popen([fm, str(path)], env=clean_env)
             return True
         except Exception:
             pass
 
-    # Fallback to xdg-open
+    # Fallback to xdg-open with clean environment
     try:
-        subprocess.Popen(["xdg-open", str(path)])
+        subprocess.Popen(["xdg-open", str(path)], env=clean_env)
         return True
     except Exception:
         return False
