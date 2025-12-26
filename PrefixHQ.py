@@ -43,22 +43,42 @@ IGNORE_APPIDS = {
 }
 
 def get_installed_games():
-    """Parse .acf files in Steam apps directory to find installed games."""
+    """Parse all Steam library folders to find installed games via appmanifest_*.acf."""
     games = {}
-    for acf_file in STEAM_APPS.glob("*.acf"):
+
+    main_steamapps = STEAM_APPS
+    library_paths = [main_steamapps]
+
+    # Read libraryfolders.vdf
+    libraryfolders_vdf = main_steamapps / "libraryfolders.vdf"
+    if libraryfolders_vdf.exists():
         try:
-            with open(acf_file, "r", encoding="utf-8", errors="ignore") as f:
+            with open(libraryfolders_vdf, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-                appid_match = re.search(r'"appid"\s+"(\d+)"', content)
-                if appid_match:
-                    appid = appid_match.group(1)
-                    if appid in IGNORE_APPIDS:
-                        continue
-                    name_match = re.search(r'"name"\s+"([^"]+)"', content)
-                    name = name_match.group(1) if name_match else f"(AppID {appid})"
-                    games[appid] = name
+                paths = re.findall(r'"path"\s+"([^"]+)"', content)
+                for p in paths:
+                    path = Path(p) / "steamapps"
+                    if path.exists() and path not in library_paths:
+                        library_paths.append(path)
         except Exception as e:
-            print(f"Error reading {acf_file}: {e}")
+            print(f"Error reading libraryfolders.vdf: {e}")
+
+    for lib_path in library_paths:
+        for acf_file in lib_path.glob("appmanifest_*.acf"):
+            try:
+                with open(acf_file, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                    appid_match = re.search(r'"appid"\s+"(\d+)"', content)
+                    if appid_match:
+                        appid = appid_match.group(1)
+                        if appid in IGNORE_APPIDS:
+                            continue
+                        name_match = re.search(r'"name"\s+"([^"]+)"', content)
+                        name = name_match.group(1) if name_match else f"(AppID {appid})"
+                        games[appid] = name
+            except Exception as e:
+                print(f"Error reading {acf_file}: {e}")
+
     return games
 
 def get_game_name(appid):
@@ -120,7 +140,7 @@ def get_default_file_manager():
             if key.lower() == desktop_lower:
                 return cmd
 
-        # Fallback: use the basename as-is
+        # Fallback: use the basename as-is (may work if it's already a command)
         return desktop_file
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
@@ -128,32 +148,21 @@ def get_default_file_manager():
 
 def open_with_file_manager(path):
     """
-    Open the given directory using the detected default file manager.
-    
-    To avoid library conflicts in PyInstaller-bundled binaries (e.g., OpenSSL version mismatches),
-    this function launches the file manager with a clean environment where LD_LIBRARY_PATH
-    is removed entirely. This ensures system libraries are used instead of bundled ones.
-    
-    Falls back to 'xdg-open' if the detected file manager fails.
-    Returns True on success, False otherwise.
+    Open the given path using the detected default file manager.
+    Falls back to 'xdg-open' if detection fails or the manager is not found.
+    Returns True if successful, False otherwise.
     """
-    # Start with a copy of the current environment
-    clean_env = os.environ.copy()
-    
-    # Remove LD_LIBRARY_PATH to prevent loading bundled libraries (e.g., outdated libssl.so)
-    clean_env.pop("LD_LIBRARY_PATH", None)
-
     fm = get_default_file_manager()
     if fm and shutil.which(fm):
         try:
-            subprocess.Popen([fm, str(path)], env=clean_env)
+            subprocess.Popen([fm, str(path)])
             return True
         except Exception:
             pass
 
-    # Fallback to xdg-open with clean environment
+    # Fallback to xdg-open
     try:
-        subprocess.Popen(["xdg-open", str(path)], env=clean_env)
+        subprocess.Popen(["xdg-open", str(path)])
         return True
     except Exception:
         return False
