@@ -12,12 +12,13 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QMessageBox, QInputDialog
 )
 
-# Set CA bundle path for SSL verification (useful on some Linux distros)
+# Set CA bundle path for SSL verification
 os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
 
 # Paths
 STEAM_APPS = Path.home() / ".local/share/Steam/steamapps"
 COMPATDATA = STEAM_APPS / "compatdata"
+# FIXED: Removed extra space from Steam API URL
 STEAM_API = "https://store.steampowered.com/api/appdetails"
 
 # Local database directory and file
@@ -43,42 +44,22 @@ IGNORE_APPIDS = {
 }
 
 def get_installed_games():
-    """Parse all Steam library folders to find installed games via appmanifest_*.acf."""
+    """Parse .acf files in Steam apps directory to find installed games."""
     games = {}
-
-    main_steamapps = STEAM_APPS
-    library_paths = [main_steamapps]
-
-    # Read libraryfolders.vdf
-    libraryfolders_vdf = main_steamapps / "libraryfolders.vdf"
-    if libraryfolders_vdf.exists():
+    for acf_file in STEAM_APPS.glob("*.acf"):
         try:
-            with open(libraryfolders_vdf, "r", encoding="utf-8", errors="ignore") as f:
+            with open(acf_file, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-                paths = re.findall(r'"path"\s+"([^"]+)"', content)
-                for p in paths:
-                    path = Path(p) / "steamapps"
-                    if path.exists() and path not in library_paths:
-                        library_paths.append(path)
+                appid_match = re.search(r'"appid"\s+"(\d+)"', content)
+                if appid_match:
+                    appid = appid_match.group(1)
+                    if appid in IGNORE_APPIDS:
+                        continue
+                    name_match = re.search(r'"name"\s+"([^"]+)"', content)
+                    name = name_match.group(1) if name_match else f"(AppID {appid})"
+                    games[appid] = name
         except Exception as e:
-            print(f"Error reading libraryfolders.vdf: {e}")
-
-    for lib_path in library_paths:
-        for acf_file in lib_path.glob("appmanifest_*.acf"):
-            try:
-                with open(acf_file, "r", encoding="utf-8", errors="ignore") as f:
-                    content = f.read()
-                    appid_match = re.search(r'"appid"\s+"(\d+)"', content)
-                    if appid_match:
-                        appid = appid_match.group(1)
-                        if appid in IGNORE_APPIDS:
-                            continue
-                        name_match = re.search(r'"name"\s+"([^"]+)"', content)
-                        name = name_match.group(1) if name_match else f"(AppID {appid})"
-                        games[appid] = name
-            except Exception as e:
-                print(f"Error reading {acf_file}: {e}")
-
+            print(f"Error reading {acf_file}: {e}")
     return games
 
 def get_game_name(appid):
@@ -97,11 +78,11 @@ def get_game_name(appid):
 
 def get_default_file_manager():
     """
-    Attempt to detect the user's default file manager by querying
-    the default handler for 'inode/directory' via xdg-mime.
+    Attempt to detect the user's default file manager.
     Returns the executable name (e.g., 'nautilus', 'dolphin') or None.
     """
     try:
+        # First try: Use xdg-mime to get default file manager
         result = subprocess.run(
             ["xdg-mime", "query", "default", "inode/directory"],
             capture_output=True,
@@ -112,7 +93,7 @@ def get_default_file_manager():
         if not desktop_file:
             return None
 
-        # Remove .desktop extension
+        # Remove .desktop extension if present
         if desktop_file.endswith(".desktop"):
             desktop_file = desktop_file[:-8]
 
@@ -128,41 +109,74 @@ def get_default_file_manager():
             "kfmclient": "kfmclient",
             "peony": "peony",
             "dde-file-manager": "dde-file-manager",
+            "org.kde.dolphin": "dolphin",
+            "dolphin": "dolphin",
         }
 
-        # Try exact match
+        # Check exact match in known mappings
         if desktop_file in known_mappings:
             return known_mappings[desktop_file]
 
-        # Try case-insensitive match
+        # Check case-insensitive match
         desktop_lower = desktop_file.lower()
         for key, cmd in known_mappings.items():
             if key.lower() == desktop_lower:
                 return cmd
 
-        # Fallback: use the basename as-is (may work if it's already a command)
-        return desktop_file
+        # Fallback: Try the basename directly
+        if shutil.which(desktop_file):
+            return desktop_file
+
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+        pass
+
+    # Second fallback: Check common file managers directly
+    common_managers = ["dolphin", "nautilus", "nemo", "thunar", "pcmanfm", "caja", "spacefm"]
+    for manager in common_managers:
+        if shutil.which(manager):
+            return manager
+
+    return None
 
 
 def open_with_file_manager(path):
     """
     Open the given path using the detected default file manager.
-    Falls back to 'xdg-open' if detection fails or the manager is not found.
     Returns True if successful, False otherwise.
     """
+    # Create a clean environment by removing problematic variables
+    clean_env = os.environ.copy()
+
+    # Remove library path variables that cause conflicts
+    clean_env.pop("LD_LIBRARY_PATH", None)
+    clean_env.pop("OPENSSL_MODULES", None)
+    clean_env.pop("OPENSSL_CONF", None)
+
+    # Remove Qt-related paths that can cause issues
+    clean_env.pop("QT_PLUGIN_PATH", None)
+    clean_env.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+    clean_env.pop("QML2_IMPORT_PATH", None)
+    clean_env.pop("QML_IMPORT_PATH", None)
+
+    # Remove any variables containing the PyInstaller bundle path
+    if "_MEIPASS" in clean_env:
+        meipass = clean_env["_MEIPASS"]
+        for key in list(clean_env.keys()):
+            if meipass in clean_env[key]:
+                clean_env.pop(key, None)
+
     fm = get_default_file_manager()
-    if fm and shutil.which(fm):
+    if fm:
         try:
-            subprocess.Popen([fm, str(path)])
+            # Use clean environment to avoid library conflicts
+            subprocess.Popen([fm, str(path)], env=clean_env)
             return True
         except Exception:
             pass
 
-    # Fallback to xdg-open
+    # Final fallback to xdg-open with clean environment
     try:
-        subprocess.Popen(["xdg-open", str(path)])
+        subprocess.Popen(["xdg-open", str(path)], env=clean_env)
         return True
     except Exception:
         return False
