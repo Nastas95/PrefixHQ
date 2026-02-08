@@ -7,6 +7,8 @@
 A modern, visual manager for Steam CompatData (Proton/Wine prefixes) on Linux.  
 Transform your folder structure into a beautiful game library with automatic cover art and multi-library awareness.
 
+![UI](https://github.com/Nastas95/PrefixHQ/blob/main/PrefixHQ.png?raw=true)
+
 ---
 
 ## ✨ Features
