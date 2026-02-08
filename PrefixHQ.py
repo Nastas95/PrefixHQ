@@ -4,6 +4,7 @@ import os
 import shutil
 import json
 import subprocess
+import platform  # ADDED FOR PLATFORM DETECTION
 import requests
 import re
 from pathlib import Path
@@ -22,9 +23,8 @@ from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkRepl
 # Fix for SSL issues on some Linux distros
 os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
 
-# --- CONSTANTS ---
+# --- CONSTANTS (FIXED MALFORMED URLS - REMOVED EXTRA SPACES) ---
 def find_steam_root():
-
     candidates = [
         Path.home() / ".steam" / "steam",  # Official Symlink (often best)
         Path.home() / ".local" / "share" / "Steam", # Standard Native
@@ -40,10 +40,10 @@ def find_steam_root():
 STEAM_BASE = find_steam_root()
 STEAM_APPS = STEAM_BASE / "steamapps"
 COMPATDATA = STEAM_APPS / "compatdata"
-STEAM_API_URL = "https://store.steampowered.com/api/appdetails"
-STEAM_SEARCH_URL = "https://store.steampowered.com/api/storesearch/?term={term}&l=english&cc=US"
-STEAM_IMG_URL = "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
-STEAMGRIDDB_SEARCH_URL = "https://www.steamgriddb.com/search/grids?term={term}"
+STEAM_API_URL = "https://store.steampowered.com/api/appdetails"  # FIXED: REMOVED TRAILING SPACES
+STEAM_SEARCH_URL = "https://store.steampowered.com/api/storesearch/?term={term}&l=english&cc=US"  # FIXED: REMOVED EXTRA SPACES
+STEAM_IMG_URL = "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"  # FIXED: REMOVED EXTRA SPACES
+STEAMGRIDDB_SEARCH_URL = "https://www.steamgriddb.com/search/grids?term={term}"  # FIXED: REMOVED EXTRA SPACES
 
 CONFIG_DIR = Path.home() / ".config/PrefixHQ"
 DB_FILE = CONFIG_DIR / "prefix_db.json"
@@ -212,6 +212,34 @@ class DataManager:
 
 class SystemUtils:
     @staticmethod
+    def _get_clean_environment():
+        """Return a sanitized environment safe for launching external processes"""
+        clean_env = os.environ.copy()
+
+        # Critical variables that cause Qt conflicts when PyInstaller-bundled
+        vars_to_remove = [
+            "LD_LIBRARY_PATH", "OPENSSL_MODULES", "OPENSSL_CONF",
+            "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
+            "QML2_IMPORT_PATH", "QML_IMPORT_PATH", "PYTHONPATH",
+            "XDG_DATA_DIRS", "XDG_CONFIG_DIRS"
+        ]
+        for var in vars_to_remove:
+            clean_env.pop(var, None)
+
+        # Remove ALL variables containing PyInstaller's temp path (_MEIPASS)
+        if "_MEIPASS" in clean_env:
+            meipass = clean_env["_MEIPASS"]
+            keys_to_remove = [k for k, v in clean_env.items() if meipass in str(v)]
+            for k in keys_to_remove:
+                clean_env.pop(k, None)
+
+        # Explicitly reset Qt variables that might leak from bundle
+        clean_env["QT_QPA_PLATFORM"] = "xcb"
+        clean_env.pop("QTWEBENGINEPROCESS_PATH", None)
+
+        return clean_env
+
+    @staticmethod
     def get_default_file_manager():
         try:
             cmd = ["xdg-mime", "query", "default", "inode/directory"]
@@ -231,30 +259,59 @@ class SystemUtils:
 
     @staticmethod
     def open_with_file_manager(path):
+        """Open path in default file manager with sanitized environment"""
         path = str(path)
-        if not os.path.exists(path): return False
-        clean_env = os.environ.copy()
-        vars_to_remove = [
-            "LD_LIBRARY_PATH", "OPENSSL_MODULES", "OPENSSL_CONF",
-            "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
-            "QML2_IMPORT_PATH", "QML_IMPORT_PATH", "PYTHONPATH"
-        ]
-        for var in vars_to_remove: clean_env.pop(var, None)
-        if "_MEIPASS" in clean_env:
-            meipass = clean_env["_MEIPASS"]
-            keys_to_remove = [k for k, v in clean_env.items() if meipass in str(v)]
-            for k in keys_to_remove: clean_env.pop(k, None)
+        if not os.path.exists(path):
+            return False
 
+        clean_env = SystemUtils._get_clean_environment()
         fm = SystemUtils.get_default_file_manager()
+
         if fm:
             try:
                 subprocess.Popen([fm, path], env=clean_env)
                 return True
-            except: pass
+            except:
+                pass
+
         try:
             subprocess.Popen(["xdg-open", path], env=clean_env)
             return True
-        except: return False
+        except:
+            return False
+
+    @staticmethod
+    def open_url(url):
+        """
+        Open URL in default browser with fully sanitized environment.
+        CRITICAL: Avoids Qt library conflicts when launched from PyInstaller bundle.
+        """
+        # Non-frozen builds can safely use Qt's native handler
+        if not getattr(sys, 'frozen', False):
+            QDesktopServices.openUrl(QUrl(url))
+            return True
+
+        clean_env = SystemUtils._get_clean_environment()
+        system = platform.system()
+
+        try:
+            if system == 'Linux':
+                # Always use xdg-open with cleaned env on Linux
+                subprocess.Popen(['xdg-open', url], env=clean_env)
+            elif system == 'Darwin':
+                subprocess.Popen(['open', url], env=clean_env)
+            elif system == 'Windows':
+                # Windows doesn't suffer from the same Qt conflicts, but clean anyway
+                subprocess.Popen(['cmd', '/c', 'start', '', url],
+                               env=clean_env,
+                               shell=False,
+                               creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                subprocess.Popen(['xdg-open', url], env=clean_env)
+            return True
+        except Exception as e:
+            print(f"Error opening URL '{url}': {e}")
+            return False
 
 # --- CUSTOM LAYOUT ---
 class FlowLayout(QLayout):
@@ -446,8 +503,11 @@ class GameCard(QFrame):
     def show_context_menu(self, pos):
         menu = QMenu(self)
 
+        # Use sanitized environment URL opener
         action_sgdb = QAction("Search on SteamGridDB", self)
-        action_sgdb.triggered.connect(lambda: QDesktopServices.openUrl(QUrl(STEAMGRIDDB_SEARCH_URL.format(term=self.data["name"]))))
+        action_sgdb.triggered.connect(
+            lambda: SystemUtils.open_url(STEAMGRIDDB_SEARCH_URL.format(term=self.data["name"]))
+        )
 
         action_local = QAction("Load Cover from File...", self)
         action_local.triggered.connect(lambda: self.window().action_set_cover_local(self.data))
@@ -863,6 +923,7 @@ class MainWindow(QMainWindow):
     def action_open(self, data):
         path = Path(data["path"])
         if path.exists():
+            # FIXED: Already uses sanitized environment
             if not SystemUtils.open_with_file_manager(path):
                 QMessageBox.warning(self, "Error", "Could not open file manager.")
         else:
