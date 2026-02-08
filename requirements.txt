@@ -1,2 +1,2 @@
-PyQt5==5.15.9
-requests==2.31.0
+PyQt6>=6.4.0
+requests>=2.28.0
