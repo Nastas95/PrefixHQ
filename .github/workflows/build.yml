@@ -2,11 +2,11 @@ name: Build PrefixHQ
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
+  release:
+    types: [ created ]
 
 jobs:
   build:
@@ -42,3 +42,36 @@ jobs:
         with:
           name: PrefixHQ-build
           path: dist/PrefixHQ
+
+  build-flatpak:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-46
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install flatpak-builder
+        run: |
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install org.kde.Platform//6.6
+          flatpak install org.kde.Sdk//6.6
+
+      - name: Build Flatpak
+        run: |
+          cd flatpak
+          flatpak-builder --user --install --force-clean build-dir com.github.Nastas95.PrefixHQ.json
+
+      - name: Create Flatpak bundle
+        run: |
+          cd flatpak
+          flatpak build-bundle build-dir com.github.Nastas95.PrefixHQ.flatpak com.github.Nastas95.PrefixHQ
+
+      - name: Upload Flatpak to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: flatpak/com.github.Nastas95.PrefixHQ.flatpak
+          append_body: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

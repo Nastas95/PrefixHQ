@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.Nastas95.PrefixHQ</id>
+  <name>PrefixHQ</name>
+  <summary>Visual manager for Steam Proton/Wine prefixes</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0</project_license>
+  <developer_name>Nastas95</developer_name>
+  <description>
+    <p>
+      PrefixHQ is a visual manager for Steam Proton and Wine prefixes on Linux.
+      Steam names your prefix folders after AppIDs — so instead of "Starfield" you get "1091500".
+      PrefixHQ turns that pile of numbers into a proper library with cover art, game names,
+      and a clear indication of which prefixes are still attached to an installed game and
+      which are just taking up space.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Visual library with cover art fetched from Steam and cached locally</li>
+      <li>Multi-library support — automatically finds all your Steam libraries</li>
+      <li>Orphan detection — green means the game is installed, red means the prefix is stale</li>
+      <li>Works with native Steam, Flatpak, and Snap out of the box</li>
+      <li>Safe deletion with confirmation dialogs</li>
+      <li>Right-click menu for advanced options</li>
+    </ul>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://github.com/user-attachments/assets/fba0f681-3ec1-41e0-ab05-12d24eb94ec7</image>
+      <caption>PrefixHQ main interface showing game library with cover art</caption>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/Nastas95/PrefixHQ</url>
+  <url type="bugtracker">https://github.com/Nastas95/PrefixHQ/issues</url>
+  <url type="donation">https://github.com/Nastas95/PrefixHQ</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="2.5" date="2024-01-01">
+      <description>
+        <p>Current release - see GitHub for full changelog</p>
+      </description>
+    </release>
+  </releases>
+</component>

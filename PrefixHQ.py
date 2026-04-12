@@ -20,7 +20,16 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPoint, QRect, QTimer, 
 from PyQt6.QtGui import QIcon, QColor, QBrush, QPixmap, QAction, QPainter, QPainterPath, QDesktopServices, QCursor
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
-os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
+# SSL certificate path detection for Flatpak compatibility
+ssl_paths = [
+    "/etc/ssl/certs/ca-certificates.crt",  # Debian/Ubuntu
+    "/etc/pki/tls/certs/ca-bundle.crt",    # Fedora/RHEL
+    "/usr/share/ca-certificates/ca-bundle.crt",  # Common fallback
+]
+for cert_path in ssl_paths:
+    if os.path.exists(cert_path):
+        os.environ["REQUESTS_CA_BUNDLE"] = cert_path
+        break
 
 # --- UPDATE SYSTEM CONSTANTS ---
 GITHUB_API_URL = "https://api.github.com/repos/Nastas95/PrefixHQ/releases/latest"
@@ -291,7 +300,9 @@ class SystemUtils:
             keys_to_remove = [k for k, v in clean_env.items() if meipass in str(v)]
             for k in keys_to_remove:
                 clean_env.pop(k, None)
-        clean_env["QT_QPA_PLATFORM"] = "xcb"
+        # Only force X11 if not already set (respects Wayland and user preferences)
+        if "QT_QPA_PLATFORM" not in os.environ:
+            clean_env["QT_QPA_PLATFORM"] = "xcb"
         clean_env.pop("QTWEBENGINEPROCESS_PATH", None)
         return clean_env
 
@@ -328,12 +339,20 @@ class SystemUtils:
         fm = SystemUtils.get_default_file_manager()
         if fm:
             try:
-                subprocess.Popen([fm, path], env=clean_env)
+                # Flatpak compatibility: escape sandbox to launch file manager on host
+                if os.path.exists("/.flatpak-info"):
+                    subprocess.Popen(["flatpak-spawn", "--host", fm, path], env=clean_env)
+                else:
+                    subprocess.Popen([fm, path], env=clean_env)
                 return True
             except:
                 pass
         try:
-            subprocess.Popen(["xdg-open", path], env=clean_env)
+            # Flatpak compatibility: escape sandbox for xdg-open as well
+            if os.path.exists("/.flatpak-info"):
+                subprocess.Popen(["flatpak-spawn", "--host", "xdg-open", path], env=clean_env)
+            else:
+                subprocess.Popen(["xdg-open", path], env=clean_env)
             return True
         except:
             return False
@@ -1273,7 +1292,16 @@ QFileDialog, QDialog, QDialogButtonBox, QComboBox
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPoint, QRect, QTimer, QUrl
 from PyQt6.QtGui import QIcon, QColor, QBrush, QPixmap, QAction, QPainter, QPainterPath, QDesktopServices, QCursor
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
-os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
+# SSL certificate path detection for Flatpak compatibility
+ssl_paths = [
+    "/etc/ssl/certs/ca-certificates.crt",  # Debian/Ubuntu
+    "/etc/pki/tls/certs/ca-bundle.crt",    # Fedora/RHEL
+    "/usr/share/ca-certificates/ca-bundle.crt",  # Common fallback
+]
+for cert_path in ssl_paths:
+    if os.path.exists(cert_path):
+        os.environ["REQUESTS_CA_BUNDLE"] = cert_path
+        break
 
 def find_steam_root():
     candidates = [
@@ -1525,7 +1553,9 @@ class SystemUtils:
             keys_to_remove = [k for k, v in clean_env.items() if meipass in str(v)]
             for k in keys_to_remove:
                 clean_env.pop(k, None)
-        clean_env["QT_QPA_PLATFORM"] = "xcb"
+        # Only force X11 if not already set (respects Wayland and user preferences)
+        if "QT_QPA_PLATFORM" not in os.environ:
+            clean_env["QT_QPA_PLATFORM"] = "xcb"
         clean_env.pop("QTWEBENGINEPROCESS_PATH", None)
         return clean_env
 
@@ -1556,12 +1586,20 @@ class SystemUtils:
         fm = SystemUtils.get_default_file_manager()
         if fm:
             try:
-                subprocess.Popen([fm, path], env=clean_env)
+                # Flatpak compatibility: escape sandbox to launch file manager on host
+                if os.path.exists("/.flatpak-info"):
+                    subprocess.Popen(["flatpak-spawn", "--host", fm, path], env=clean_env)
+                else:
+                    subprocess.Popen([fm, path], env=clean_env)
                 return True
             except:
                 pass
         try:
-            subprocess.Popen(["xdg-open", path], env=clean_env)
+            # Flatpak compatibility: escape sandbox for xdg-open as well
+            if os.path.exists("/.flatpak-info"):
+                subprocess.Popen(["flatpak-spawn", "--host", "xdg-open", path], env=clean_env)
+            else:
+                subprocess.Popen(["xdg-open", path], env=clean_env)
             return True
         except:
             return False

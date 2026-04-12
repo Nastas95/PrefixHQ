@@ -1,0 +1,48 @@
+{
+    "app-id": "com.github.Nastas95.PrefixHQ",
+    "runtime": "org.kde.Platform",
+    "runtime-version": "6.6",
+    "sdk": "org.kde.Sdk",
+    "command": "PrefixHQ.py",
+    "finish-args": [
+        "--socket=x11",
+        "--socket=wayland",
+        "--share=network",
+        "--filesystem=home",
+        "--device=dri",
+        "--talk-name=org.freedesktop.portal.FileChooser",
+        "--talk-name=org.freedesktop.portal.OpenURI"
+    ],
+    "modules": [
+        {
+            "name": "python3-requests",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --no-index --find-links=\"file://${PWD}\" --prefix=/app requests"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/py3/r/requests/requests-2.32.3-py3-none-any.whl",
+                    "sha256": "dd4917ef52ccc9f7f0272bfbe552ace96a36a0e801266915ff98b4b0c4b1ae20"
+                }
+            ]
+        },
+        {
+            "name": "prefixhq",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -Dm755 PrefixHQ.py /app/bin/PrefixHQ.py",
+                "install -Dm644 PrefixHQ.png /app/share/icons/hicolor/1014x756/apps/com.github.Nastas95.PrefixHQ.png",
+                "install -Dm644 flatpak/build-aux/flatpak/com.github.Nastas95.PrefixHQ.desktop /app/share/applications/com.github.Nastas95.PrefixHQ.desktop",
+                "install -Dm644 flatpak/build-aux/flatpak/com.github.Nastas95.PrefixHQ.metainfo.xml /app/share/metainfo/com.github.Nastas95.PrefixHQ.metainfo.xml"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": ".."
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=PrefixHQ
+Comment=Visual manager for Steam Proton/Wine prefixes
+Exec=com.github.Nastas95.PrefixHQ
+Icon=com.github.Nastas95.PrefixHQ
+Type=Application
+Categories=Game;Utility;
+StartupNotify=true
