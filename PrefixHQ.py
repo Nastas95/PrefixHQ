@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 GITHUB_API_URL = "https://api.github.com/repos/Nastas95/PrefixHQ/releases/latest"
 GITHUB_RELEASES_URL = "https://github.com/Nastas95/PrefixHQ/releases"
-CURRENT_VERSION = "3.0.1"
+CURRENT_VERSION = "3.0.2"
 
 def find_steam_root():
     candidates = [
