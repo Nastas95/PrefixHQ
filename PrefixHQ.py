@@ -6,7 +6,7 @@ import urllib.parse
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QMessageBox, QInputDialog, QProgressBar,
-    QScrollArea, QFrame, QLineEdit, QLayout, QStyle, QMenu,
+    QScrollArea, QFrame, QLineEdit, QLayout, QStyle, QMenu, QCheckBox,
     QFileDialog, QDialog, QDialogButtonBox, QComboBox, QTextEdit
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPoint, QRect, QTimer, QUrl
@@ -54,6 +54,9 @@ CACHE_DIR = get_xdg_dir("XDG_CACHE_HOME", Path.home() / ".cache") / "PrefixHQ"
 DB_FILE = CONFIG_DIR / "prefix_db.json"
 IMG_CACHE_DIR = CACHE_DIR
 
+# Ignore app ids we don't want to manage:
+# 0 is no app, 228980 is "Steamworks Common Redistributables"
+# 1070560, 1391110 and 1628350 are "Steam Linux Runtime" v1-3
 IGNORE_APPIDS = {"0", "228980", "1070560", "1391110", "1628350"}
 
 
@@ -714,6 +717,7 @@ class MainWindow(QMainWindow):
         db = load_db()
         self.view_mode = db.get("view_mode", "grid")
         self.current_theme = db.get("current_theme", "Steam Dark")
+        self.auto_check_update = db.get("auto_check_update", False)
         self.setStyleSheet(get_theme_qss(self.current_theme))
 
         self.active_downloads = set()
@@ -746,6 +750,13 @@ class MainWindow(QMainWindow):
         footer_layout.addWidget(self.status_label)
         footer_layout.addStretch()
 
+        self.tgl_auto_check_update = QCheckBox("Auto check updates")
+        self.tgl_auto_check_update.setObjectName("UpdateTgl")
+        self.tgl_auto_check_update.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.tgl_auto_check_update.setToolTip(f"Check for update on startup")
+        self.tgl_auto_check_update.setChecked(self.auto_check_update)
+        self.tgl_auto_check_update.checkStateChanged.connect(self.on_auto_update_check_changed)
+
         self.btn_check_update = QPushButton("Check Updates")
         self.btn_check_update.setObjectName("UpdateBtn")
         self.btn_check_update.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -758,12 +769,14 @@ class MainWindow(QMainWindow):
         self.exit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.exit_btn.clicked.connect(self.close_application)
 
+        footer_layout.addWidget(self.tgl_auto_check_update)
         footer_layout.addWidget(self.btn_check_update)
         footer_layout.addWidget(self.exit_btn)
         self.main_layout.addWidget(footer_widget)
 
         self.refresh_prefix_data()
-        QTimer.singleShot(3000, lambda: self.perform_update_check(show_message=False))
+        if self.auto_check_update:
+            QTimer.singleShot(3000, lambda: self.perform_update_check(show_message=False))
 
     def close_application(self):
         if self.active_downloads:
@@ -827,6 +840,15 @@ class MainWindow(QMainWindow):
         db["current_theme"] = theme_name
         save_db(db)
         self.setStyleSheet(get_theme_qss(theme_name))
+
+    def on_auto_update_check_changed(self, acu_toggle):
+        is_toggled = False
+        if acu_toggle == Qt.CheckState.Checked:
+            is_toggled = True
+        db = load_db()
+        db["auto_check_update"] = is_toggled
+        save_db(db)
+        self.auto_check_update = is_toggled
 
     def update_toggle_btn_icon(self):
         style = QApplication.style()
@@ -912,6 +934,7 @@ class MainWindow(QMainWindow):
 
 
     def perform_update_check(self, show_message=True):
+        logging.info("Checking for updates")
         release_info = self.get_latest_release_from_github()
         if not release_info:
             if show_message:
